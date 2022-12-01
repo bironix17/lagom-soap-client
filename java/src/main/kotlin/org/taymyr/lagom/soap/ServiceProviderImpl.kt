@@ -7,7 +7,9 @@ import io.github.config4k.extract
 import javassist.util.proxy.MethodHandler
 import javassist.util.proxy.ProxyFactory
 import mu.KotlinLogging
+import org.apache.cxf.binding.soap.SoapFault
 import org.apache.cxf.transport.http.HTTPConduit
+import org.apache.cxf.transport.http.HTTPException
 import play.soap.PlayJaxWsClientProxy
 import play.soap.PlaySoapClient
 import java.lang.String.format
@@ -153,7 +155,10 @@ constructor(
             return (method.invoke(port, *args) as CompletionStage<*>).handle { result, throwable ->
                 after(port, method)
                 throwable?.let {
-                    if (throwable.javaClass.isAnnotationPresent(WebFault::class.java)) throw WebFaultException(throwable)
+                    if (throwable.javaClass.isAnnotationPresent(WebFault::class.java)
+                        || throwable is HTTPException
+                        || throwable is SoapFault
+                    ) throw WebFaultException(throwable)
                     throw RuntimeException(format("Failed invoke '%s'", method), throwable)
                 }
                 result
