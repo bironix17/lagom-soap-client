@@ -155,15 +155,29 @@ constructor(
             return (method.invoke(port, *args) as CompletionStage<*>).handle { result, throwable ->
                 after(port, method)
                 throwable?.let {
-                    if (throwable.javaClass.isAnnotationPresent(WebFault::class.java)
-                        || throwable is HTTPException
-                        || throwable is SoapFault
-                    ) throw WebFaultException(throwable)
+                    getWebFaultException(throwable)?.let { throw it }
                     throw RuntimeException(format("Failed invoke '%s'", method), throwable)
                 }
                 result
             }
         }
+
+        private fun getWebFaultException(e: Throwable): WebFaultException? =
+            when {
+                e.javaClass.isAnnotationPresent(WebFault::class.java) ->
+                    WebFaultException(e)
+                e is HTTPException ->
+                    WebFaultException(
+                        SoapTransportException(
+                            errorCode = e.responseCode.toString(),
+                            message = "HTTP response '${e.responseCode} ${e.responseMessage}' when communicating with ${e.url}"
+                        )
+                    )
+                e is SoapFault ->
+                    WebFaultException(SoapTransportException(e.statusCode.toString(), e.message.orEmpty()))
+                else ->
+                    null
+            }
 
         private fun createPort(): P {
             // http://cxf.apache.org/faq.html#FAQ-AreJAX-WSclientproxiesthreadsafe%3F
